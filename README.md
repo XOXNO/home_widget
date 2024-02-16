@@ -20,7 +20,7 @@ In order to work correctly there needs to be some platform specific setup. Check
 <details><summary>iOS</summary>
 
 ### Add a Widget to your App in Xcode
-Add a widget extension by going `File > New > Target > Widget Extension`
+Add a widget extension by going <kbd>File</kbd> > <kbd>New</kbd> > <kbd>Target</kbd> > <kbd>Widget Extension</kbd>
 
 ![Widget Extension](https://github.com/ABausG/home_widget/blob/main/.github/assets/widget_extension.png?raw=true)
 
@@ -30,19 +30,18 @@ You need to add a groupId to the App and the Widget Extension
 
 **Note: in order to add groupIds you need a paid Apple Developer Account**
 
-Go to your [Apple Developer Account](https://developer.apple.com/account/resources/identifiers/list/applicationGroup) and add a new group
-Add this group to you Runner and the Widget Extension inside XCode `Signing & Capabilities > App Groups > +`
+Go to your [Apple Developer Account](https://developer.apple.com/account/resources/identifiers/list/applicationGroup) and add a new group.
+Add this group to your Runner and the Widget Extension inside XCode: <kbd>Signing & Capabilities</kbd> > <kbd>App Groups</kbd> > <kbd>+</kbd>.
+(To swap between your App, and the Extension change the Target)
 
 ![Build Targets](https://github.com/ABausG/home_widget/blob/main/.github/assets/target.png?raw=true)
-
-(To swap between your App, and the Extension change the Target)
 
 ### Sync CFBundleVersion (optional)
 This step is optional, this will sync the widget extension build version with your app version, so you don't get warnings of mismatch version from App Store Connect when uploading your app.
 
 ![Build Phases](https://github.com/ABausG/home_widget/blob/main/.github/assets/build_phases.png?raw=true)
 
-In your Runner (app) target go to `Build Phases > + > New Run Script Phase` and add the following script:
+In your Runner (app) target go to <kbd>Build Phases</kbd> > <kbd>+</kbd> > <kbd>New Run Script Phase</kbd> and add the following script:
 ```bash
 generatedPath="$SRCROOT/Flutter/Generated.xcconfig"
 versionNumber=$(grep FLUTTER_BUILD_NAME $generatedPath | cut -d '=' -f2)
@@ -104,14 +103,32 @@ which will give you access to the same SharedPreferences
 ### More Information
 For more Information on how to create and configure Android Widgets, check out [this guide](https://developer.android.com/develop/ui/views/appwidgets) on the Android Developers Page.
 
+### Jetpack Glance
+In Jetpack Glance, you have to write your receiver (== provider), that returns a widget.
+Add it to AndroidManifest the same way as written above for android widgets.
+
+```kotlin
+class MyReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget get() = MyWidget()
+}
+```
+
+If you need to access HomeWidget shared preferences, use this:
+
+```kotlin
+HomeWidgetPlugin.getData(context)
+```
+
 </details>
 
 ## Usage
 
 ### Setup
 <details><summary>iOS</summary>
+    
 For iOS, you need to call `HomeWidget.setAppGroupId('YOUR_GROUP_ID');`
 Without this you won't be able to share data between your App and the Widget and calls to `saveWidgetData` and `getWidgetData` will return an error
+
 </details>
 
 ### Save Data
@@ -134,6 +151,58 @@ This Name needs to be equal to the Classname of the [WidgetProvider](#Write-your
 
 The name for iOS will be chosen by checking `iOSName` if that was not provided it will fallback to `name`.
 This name needs to be equal to the Kind specified in you Widget
+
+#### Android
+Calling `HomeWidget.updateWidget` only notifies the specified provider.
+To update widgets using this provider,
+update them from the provider like this:
+
+```kotlin
+class HomeWidgetExampleProvider : HomeWidgetProvider() {
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray, widgetData: SharedPreferences) {
+        appWidgetIds.forEach { widgetId ->
+            val views = RemoteViews(context.packageName, R.layout.example_layout).apply {
+                // ...
+            }
+
+            // Update widget.
+            appWidgetManager.updateAppWidget(widgetId, views)
+        }
+    }
+}
+```
+
+#### Jetpack Glance
+Updating widgets in Jetpack Glance is a bit more tricky,
+widgets are only updated when their state changes,
+therefore simple update will not refresh them.
+To update them, you have to fake state update like this:
+
+```kotlin
+class MyWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget get() = MyWidget()
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+
+        runBlocking {
+            appWidgetIds.forEach {
+                val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(it)
+                MyWidget().apply {
+                    // Must update widget state otherwise it update has no effect for some reason.
+                    updateAppWidgetState(context, glanceId) { prefs ->
+                        prefs[stringPreferencesKey("___FAKE_UPDATE___")] = Random.nextULong().toString()
+                    }
+
+                    // Update widget.
+                    update(context, glanceId)
+                }
+            }
+        }
+    }
+}
+```
 
 ### Retrieve Data
 To retrieve the current Data saved in the Widget call `HomeWidget.getWidgetData<String>('id', defaultValue: data)`
@@ -163,13 +232,13 @@ Android and iOS (starting with iOS 17) allow widgets to have interactive Element
 <details><summary>iOS</summary>
 
 1. Adjust your Podfile to add `home_widget` as a dependency to your WidgetExtension
-   ```
+   ```rb
    target 'YourWidgetExtension' do
       use_frameworks!
       use_modular_headers!
 
       pod 'home_widget', :path => '.symlinks/plugins/home_widget/ios'
-end
+   end
    ```
 2. To be able to use plugins with the Background Callback add this to your AppDelegate's `application` function
    ```swift
@@ -234,7 +303,7 @@ end
 
 <details><summary>Android</summary>
 
-1. Add the necessary Receiver and Service to you `AndroidManifest.xml` file
+1. Add the necessary Receiver and Service to your `AndroidManifest.xml` file
     ```
    <receiver android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"  android:exported="true">
         <intent-filter>
@@ -431,6 +500,43 @@ val pendingIntentWithData = HomeWidgetLaunchIntent.getActivity(
         Uri.parse("homeWidgetExample://message?message=$message"))
 setOnClickPendingIntent(R.id.widget_message, pendingIntentWithData)
 ```
+
+#### Jetpack Glance
+Create an `ActionCallback`:
+
+```kotlin
+class OpenAppAction : ActionCallback {
+    companion object {
+        const val MESSAGE_KEY = "OpenAppActionMessageKey"
+    }
+
+    override suspend fun onAction(
+        context: Context, glanceId: GlanceId, parameters: ActionParameters
+    ) {
+        val message = parameters[ActionParameters.Key<String>(MESSAGE_KEY)]
+
+        val pendingIntentWithData = HomeWidgetLaunchIntent.getActivity(
+            context, MainActivity::class.java, Uri.parse("homeWidgetExample://message?message=$message")
+        )
+
+        pendingIntentWithData.send()
+    }
+}
+```
+
+and use it like this:
+
+```kotlin
+Button(
+    text = "Open App",
+    onClick = actionRunCallback<OpenConfigurationAction>(
+        actionParametersOf(
+            ActionParameters.Key<String>(OpenAppAction.MESSAGE_KEY) to "your message"
+        )
+    )
+)
+```
+
 </details>
 
 ### Background Update
@@ -446,6 +552,23 @@ WorkmanagerPlugin.setPluginRegistrantCallback { registry in
 ```
 to [AppDelegate.swift](example/ios/Runner/AppDelegate.swift)
 
+### Request Pin Widget
+Requests to Pin (Add) the Widget to the users HomeScreen by pinning it to the users HomeScreen.
+
+```dart
+HomeWidget.requestPinWidget(
+    name: 'HomeWidgetExampleProvider',
+    androidName: 'HomeWidgetExampleProvider',
+    qualifiedAndroidName: 'com.example.app.HomeWidgetExampleProvider',
+);
+```
+
+This method is only supported on [Android, API 26+](https://developer.android.com/develop/ui/views/appwidgets/configuration#pin).
+If you want to check whether it is supported on current device, use:
+
+```dart
+HomeWidget.isRequestPinWidgetSupported();
+```
 
 ---
 
