@@ -173,9 +173,9 @@ class HomeWidget {
           child: repaintBoundary,
         ),
         configuration: ViewConfiguration(
-          constraints: ui.ViewConstraints(
-              maxHeight: logicalSize.height, maxWidth: logicalSize.width),
-          devicePixelRatio: 1.0,
+          logicalConstraints: BoxConstraints(
+              maxHeight: logicalSize.height, maxWidth: logicalSize.width,),
+          devicePixelRatio: pixelRatio,
         ),
       );
 
